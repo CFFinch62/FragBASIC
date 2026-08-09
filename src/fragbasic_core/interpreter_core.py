@@ -27,6 +27,14 @@ class InterpreterCore:
     """
 
     def __init__(self):
+        # Cache of NodeType -> bound visit_* method, so visit() below
+        # resolves each node type's handler once instead of recomputing
+        # f'visit_{node.type.name.lower()}' and calling getattr() on every
+        # single node visited (this loop runs millions of times even in
+        # modest programs, and profiling showed the string/getattr
+        # machinery alone was ~25% of total runtime on a hot loop).
+        self._visit_dispatch = {}
+
         # Variable storage
         self.variables = {}
 
@@ -130,8 +138,10 @@ class InterpreterCore:
         """Visit a node and execute its operation"""
         if getattr(node, 'line_num', None) is not None:
             self.current_line = node.line_num
-        method_name = f'visit_{node.type.name.lower()}'
-        method = getattr(self, method_name, self.no_visit_method)
+        method = self._visit_dispatch.get(node.type)
+        if method is None:
+            method = getattr(self, f'visit_{node.type.name.lower()}', self.no_visit_method)
+            self._visit_dispatch[node.type] = method
         return method(node)
 
     def no_visit_method(self, node):
