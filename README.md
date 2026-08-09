@@ -1,0 +1,105 @@
+# FragBASIC
+
+A standalone, dependency-free educational BASIC interpreter, distributed as a
+CLI tool and as an embeddable Python package. FragBASIC is IDE-agnostic by
+design: any editor or IDE — [BLADE](../../IDES/IDE_Suite%202/BLADE), or
+anything else that can launch a subprocess or import a Python package — can
+run FragBASIC programs without bundling a GUI toolkit.
+
+`src/fragbasic_core` has zero third-party dependencies — only the Python
+standard library — so it's safe to embed anywhere Python 3.8+ runs.
+
+**[docs/user-guide.md](docs/user-guide.md)** is the full reference: every
+keyword, operator, and built-in function, with examples, plus complete CLI
+usage. This README covers installing and embedding; the user guide covers
+writing FragBASIC programs.
+
+## Getting started
+
+```bash
+./setup.sh                                # creates venv, installs dev extras
+source venv/bin/activate
+python -m pytest tests/ -v                # run the interpreter test suite
+./run.sh examples/hello.bas                # run a program from source
+./run.sh -c 'PRINT "hi"'                   # run inline code
+```
+
+To install the `fragbasic` command itself:
+
+```bash
+pip install -e .
+fragbasic examples/fizzbuzz.bas
+```
+
+## CLI usage
+
+```
+fragbasic <file.bas>
+fragbasic -c "<code>"
+fragbasic <file.bas> --timeout <seconds>
+```
+
+- Program output goes to stdout, flushed after every write (so it streams
+  live rather than buffering — important when a parent process, like BLADE's
+  `QProcess`, is reading it incrementally).
+- `INPUT` reads one line at a time from stdin.
+- Errors (lex/parse/runtime) are printed to stderr as a single line:
+  `Error on line N: <message>`.
+- Exit codes: `0` success, `1` a BASIC-level error, `2` a usage error (bad
+  arguments, file not found), `130` execution was cancelled (Ctrl+C,
+  SIGTERM, or `--timeout` expired).
+- `--timeout` cancels a CPU-bound program between statements. It cannot
+  interrupt a program that's blocked waiting on `INPUT` — use Ctrl+C or
+  SIGTERM for that instead.
+
+## Embedding
+
+```python
+from fragbasic_core import run_source, Lexer, Parser, Interpreter
+
+# Quick one-shot run against real stdin/stdout:
+run_source(open("program.bas").read())
+
+# Or wire up your own I/O (e.g. an IDE's console pane):
+interpreter = Interpreter()
+interpreter.set_io_functions(input_func=my_input, output_func=my_output)
+tokens = Lexer(source).generate_tokens()
+ast = Parser(tokens).parse()
+interpreter.interpret(ast)
+
+# Cooperative cancellation (e.g. a Stop button), from another thread:
+interpreter.request_cancel()
+```
+
+Errors raise `fragbasic_core.LexerError`, `ParseError`, or
+`BasicRuntimeError` (all subclasses of `FragBasicError`), each carrying a
+`.line_num` and a pre-formatted `.format()` string. A cancelled run raises
+`ExecutionCancelled`.
+
+## Language
+
+FragBASIC is a teaching-focused BASIC dialect: five value types, arrays up
+to 3 dimensions, the usual arithmetic/comparison/logical operators,
+`IF`/`SELECT CASE`/`FOR`/`WHILE`/`DO`/`GOSUB` control flow, `SUB`/
+`FUNCTION`, `PRINT`/`INPUT`/`DATA`/`READ`, and ~35 built-in math/string/
+conversion/system functions. Graphics, sound, and file-system statements
+(`LINE`, `CIRCLE`, `SOUND`, `FILES`, `SHELL`, etc.) are intentionally not
+implemented — this is a teaching-focused subset, not a full QBasic clone.
+
+**See [docs/user-guide.md](docs/user-guide.md) for the complete language
+reference** (every keyword and built-in, with examples) and its "Not
+implemented" / limitations notes (`CONST`, `INKEY$` on POSIX, etc.).
+
+For what's missing, why, and what's actually planned versus intentionally
+excluded, see
+[dev-docs/qbasic-compatibility-roadmap.md](dev-docs/qbasic-compatibility-roadmap.md).
+
+## Design
+
+FragBASIC ships as a structured error hierarchy with line numbers
+(`errors.py`), a cooperative cancellation hook usable by an IDE's Stop
+button or `--timeout`, and a real (if platform-limited) `INKEY$` — see
+`src/fragbasic_core/` for the implementation.
+
+BLADE can run FragBASIC as an interpreter backend alongside Yabasic — see
+BLADE's `app/basic_language.py` `BACKENDS` registry.

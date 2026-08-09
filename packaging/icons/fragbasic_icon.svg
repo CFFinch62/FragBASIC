@@ -1,0 +1,12 @@
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>FragBASIC icon</title>
+<desc>A shattered fragment shape around a terminal prompt, representing the FragBASIC interpreter</desc>
+<rect x="0" y="0" width="300" height="300" rx="52" fill="#1C2126"/>
+<polygon points="150,30 214,96 176,132 128,110" fill="#FFB454" stroke="#1C2126" stroke-width="3"/>
+<polygon points="214,96 258,168 190,182 176,132" fill="#F0883A" stroke="#1C2126" stroke-width="3"/>
+<polygon points="128,110 176,132 190,182 108,196 70,150" fill="#FFC97A" stroke="#1C2126" stroke-width="3"/>
+<polygon points="70,150 108,196 92,246 42,210" fill="#E8721E" stroke="#1C2126" stroke-width="3"/>
+<polygon points="108,196 190,182 220,232 132,258" fill="#FFA240" stroke="#1C2126" stroke-width="3"/>
+<path d="M 95 230 L 125 230 L 108 254 Z" fill="#1C2126"/>
+<rect x="140" y="248" width="34" height="12" rx="2" fill="#1C2126"/>
+</svg>

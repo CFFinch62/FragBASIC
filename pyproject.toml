@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fragbasic"
+version = "1.0.0"
+description = "FragBASIC — a standalone, dependency-free educational BASIC interpreter, usable as a CLI or embedded in any IDE"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    { name = "Chuck Finch" },
+]
+keywords = [
+    "basic",
+    "programming-language",
+    "education",
+    "teaching",
+    "interpreter",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Education",
+    "Topic :: Software Development :: Interpreters",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+fragbasic = "fragbasic_core.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/CFFinch62"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fragbasic_core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

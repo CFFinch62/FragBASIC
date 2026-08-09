@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FragBASIC
+GenericName=BASIC Interpreter
+Comment=Run FragBASIC (.bas) programs from a terminal
+Exec=fragbasic %f
+Icon=fragbasic
+Terminal=true
+Categories=Development;
+MimeType=text/x-basic;
+StartupNotify=false
+NoDisplay=false
