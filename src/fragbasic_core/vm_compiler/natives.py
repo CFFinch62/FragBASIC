@@ -12,9 +12,14 @@ compiler.py's module docstring for which opcodes route through which:
 1. Operators where Python's own operator already matches FragBASIC's rule
    (`-`, `*`, unary `-`, most comparisons' numeric path) skip this file
    entirely — the compiler emits NucleusVM's raw BINARY_*/UNARY_* opcodes.
-2. Operators that are polymorphic or truncate differently than Python's own
-   operator (`+`, `\\`, `MOD`, `^`, comparisons, `AND`/`OR`/`NOT`/`XOR`/
-   `EQV`/`IMP`) get a thin wrapper here, called via CALL_NATIVE.
+   As of the performance pass documented in NucleusVM's PROGRESS.md, this
+   also covers `\\`/`MOD` (via the generic `TO_INT` opcode) and `AND`/`OR`/
+   `NOT` (via `LOGICAL_AND`/`LOGICAL_OR`/`UNARY_NOT`) — real corpus usage
+   showed these were common enough in loop-heavy code that the
+   `CALL_NATIVE` cost mattered, unlike the rarer `XOR`/`EQV`/`IMP` below.
+2. Operators that are still polymorphic or otherwise can't be expressed via
+   a raw opcode (`+`, `^`, comparisons in general expression context,
+   `XOR`/`EQV`/`IMP`) get a thin wrapper here, called via CALL_NATIVE.
 3. Everything host-effectful or requiring a lookup table (PRINT formatting,
    builtins, array allocation, sigil coercion) is native by NucleusVM's own
    design (CALL_NATIVE is the one generic escape hatch for that).
@@ -81,24 +86,6 @@ def _add(a, b):
     return a + b
 
 
-def _idiv(a, b):
-    """\\ (INTEGER_DIV): both operands truncated to int *before* dividing,
-    even if either was a float (visit_integer_div) — Python's raw `//`
-    does not pre-truncate, so this can't be a plain BINARY_IDIV."""
-    ai, bi = _to_integer(a), _to_integer(b)
-    if bi == 0:
-        raise ZeroDivisionError("Division by zero")
-    return ai // bi
-
-
-def _mod(a, b):
-    """MOD: same truncate-both-first rule as \\ (visit_mod)."""
-    ai, bi = _to_integer(a), _to_integer(b)
-    if bi == 0:
-        raise ZeroDivisionError("Division by zero")
-    return ai % bi
-
-
 def _pow(a, b):
     """^ always produces a float result (visit_power forces to_single()
     on both operands) — Python's ** keeps int**int as int, so this can't
@@ -146,18 +133,6 @@ def _cmp_ge(a, b):
     if _is_str(a) or _is_str(b):
         return -1 if _to_string(a) >= _to_string(b) else 0
     return -1 if _to_single(a) >= _to_single(b) else 0
-
-
-def _logical_and(a, b):
-    return -1 if (_to_single(a) != 0 and _to_single(b) != 0) else 0
-
-
-def _logical_or(a, b):
-    return -1 if (_to_single(a) != 0 or _to_single(b) != 0) else 0
-
-
-def _logical_not(a):
-    return -1 if _to_single(a) == 0 else 0
 
 
 def _logical_xor(a, b):
@@ -369,12 +344,13 @@ def build_natives(output_func):
     `text` argument)."""
     natives = {
         "_add": _add,
-        "_idiv": _idiv,
-        "_mod": _mod,
         "_pow": _pow,
         "_eq": _cmp_eq, "_ne": _cmp_ne, "_lt": _cmp_lt, "_gt": _cmp_gt,
         "_le": _cmp_le, "_ge": _cmp_ge,
-        "_and": _logical_and, "_or": _logical_or, "_not": _logical_not,
+        # AND/OR/NOT/\/MOD are compiled directly via NucleusVM's
+        # LOGICAL_AND/LOGICAL_OR/UNARY_NOT/TO_INT opcodes now (see
+        # compiler.py) — no native wrapper needed for those anymore.
+        # XOR/EQV/IMP stay native (real corpus usage: 1 file combined).
         "_xor": _logical_xor, "_eqv": _logical_eqv, "_imp": _logical_imp,
         "_for_should_exit": _for_should_exit,
         "_read_next": _read_next,

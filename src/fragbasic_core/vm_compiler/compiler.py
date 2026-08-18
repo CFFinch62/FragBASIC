@@ -21,24 +21,51 @@ after the survey showed 17 solutions actually use it).
 Value representation: unboxed native Python int/float/str/dict (arrays),
 no separate type tag — see NucleusVM's PROGRESS.md for the audit that
 established `type(x) is int`/`is float` already carries what
-`Variable.var_type` encoded. Three deliberate exceptions to "just use
-NucleusVM's raw opcode," each routed through `natives.py` via CALL_NATIVE
-instead:
+`Variable.var_type` encoded.
 
-- `+` is polymorphic (numeric add vs. string concat, decided by *runtime*
-  operand type) — not a plain BINARY_ADD.
-- `\\` (INTEGER_DIV) and `MOD` truncate *both* operands to int before
+Performance note (see NucleusVM's PROGRESS.md for the full investigation):
+the first version of this compiler routed every comparison/logical-op/
+`\\`/`MOD` through `CALL_NATIVE` unconditionally for correctness, which
+measurably lost to the tree-walker on loop-heavy code (a real Python
+function call per operation, in a hot loop). Profiling found most of that
+gap was actually in NucleusVM's own dispatch loop (fixed there — `Op` as
+`IntEnum`, dict-dispatch-first), but this compiler also now avoids
+`CALL_NATIVE` for the four operators real corpus usage showed matter most
+(`AND`/`OR`, 50+ files each; `\\`/`MOD`, 50+ each — vs. `XOR`/`EQV`/`IMP`
+combined in 1 file, left on the native path):
+
+- `+` is still polymorphic (numeric add vs. string concat, decided by
+  *runtime* operand type) — not a plain `BINARY_ADD`, stays `CALL_NATIVE`.
+- `\\` (`INTEGER_DIV`) and `MOD` truncate *both* operands to int before
   dividing, even if either is a float — Python's raw `//`/`%` don't
-  pre-truncate.
-- `^` (POWER) always produces a float result regardless of operand types —
-  Python's `**` keeps `int ** int` as `int`.
-- Comparisons and `AND`/`OR`/`NOT`/`XOR`/`EQV`/`IMP` return classic-BASIC
-  `-1`/`0` (as an INTEGER), not Python `True`/`False` — printing a
-  comparison result must show "-1", not "True". NucleusVM's own
-  JUMP_IF_FALSE/JUMP_IF_TRUE truthiness (`bool(value)`) still works
-  correctly on -1/0 without any extra wrapping, since `bool(-1)` and
-  `bool(0)` already match FragBASIC's own `to_single() != 0` condition
-  check.
+  pre-truncate. Compiles to NucleusVM's `TO_INT` (a generic cast opcode,
+  added for exactly this) on each operand, then the raw `BINARY_IDIV`/
+  `BINARY_MOD` opcode — no native call.
+- `^` (`POWER`) always produces a float result regardless of operand
+  types — Python's `**` keeps `int ** int` as `int`. Still `CALL_NATIVE`
+  (rarer than `\\`/`MOD`/`AND`/`OR` in the corpus, not worth a dedicated
+  opcode).
+- Comparisons return classic-BASIC `-1`/`0` (as an INTEGER), not Python
+  `True`/`False` — printing a comparison result must show "-1", not
+  "True". Still `CALL_NATIVE` in general expression context, but
+  `_compile_condition` compiles a comparison used only as a branch test
+  (or nested inside `AND`/`OR`/`NOT`) via raw `COMPARE_*` instead — see
+  `_COMPARE_OPCODE`'s note.
+- `AND`/`OR` are eager (unlike Python's own short-circuiting `and`/`or` —
+  FragBASIC's `visit_and`/`visit_or` always evaluate both sides) and need
+  the same `-1`/`0` convention. Compiles to NucleusVM's `LOGICAL_AND`/
+  `LOGICAL_OR` (added for exactly this — eager, `-1`/`0`-convertible
+  truthiness combination, distinct from the short-circuit `and`/`or`
+  `JUMP_IF_*_OR_POP` already covers) on operands compiled via
+  `_compile_condition` (cheaper — the combinator only needs each
+  operand's truthiness), followed by `UNARY_NEG` to convert the resulting
+  Python bool to exact `-1`/`0` (`-True == -1`, `-False == 0`) — except
+  inside `_compile_condition` itself, where only truthiness is needed and
+  the `UNARY_NEG` step is skipped.
+- `NOT` similarly compiles its operand via `_compile_condition`, then raw
+  `UNARY_NOT` (+ `UNARY_NEG` in value context, matching `AND`/`OR`).
+- `XOR`/`EQV`/`IMP` stay `CALL_NATIVE` — real corpus usage is 1 file
+  combined, not worth adding dedicated opcodes for.
 
 Everything else (`-`, `*`, `/`, unary `-`) already gets Python's own
 operator semantics, which match FragBASIC's promotion rules exactly (int op
@@ -67,8 +94,6 @@ from .symbols import FunctionScope, resolve_locals
 
 _BINARY_NATIVE = {
     NodeType.ADD: "_add",
-    NodeType.INTEGER_DIV: "_idiv",
-    NodeType.MOD: "_mod",
     NodeType.POWER: "_pow",
     NodeType.EE: "_eq",
     NodeType.NE: "_ne",
@@ -76,8 +101,10 @@ _BINARY_NATIVE = {
     NodeType.GT: "_gt",
     NodeType.LTE: "_le",
     NodeType.GTE: "_ge",
-    NodeType.AND: "_and",
-    NodeType.OR: "_or",
+    # XOR/EQV/IMP stay CALL_NATIVE — real corpus usage is 1 file combined
+    # (vs. 50+ each for AND/OR/MOD/\), so a dedicated opcode wasn't
+    # justified the way it was for those four (see _compile_expr's
+    # INTEGER_DIV/MOD/AND/OR handling and NucleusVM's TO_INT/LOGICAL_*).
     NodeType.XOR: "_xor",
     NodeType.EQV: "_eqv",
     NodeType.IMP: "_imp",
@@ -547,27 +574,41 @@ class VMCompiler:
 
     def _compile_condition(self, node):
         """Compile an expression used only for its truthiness — an
-        IF/WHILE condition, or an AND/OR/NOT/XOR/EQV/IMP operand (those
-        natives all test `_to_single(x) != 0`, which agrees for a Python
-        bool or a BASIC -1/0 alike). Behaves exactly like _compile_expr
-        except it skips materializing an exact -1/0 for a comparison
-        result that will never be observed as a real value — see
-        _COMPARE_OPCODE's note for why this is safe here specifically
-        and not in general expression context."""
+        IF/WHILE condition, or an AND/OR/NOT/XOR/EQV/IMP operand. Behaves
+        exactly like _compile_expr except it skips materializing an exact
+        BASIC -1/0 value that will never be observed as a real value:
+        comparisons compile via raw COMPARE_* (see _COMPARE_OPCODE's
+        note), and AND/OR/NOT compile via NucleusVM's LOGICAL_AND/
+        LOGICAL_OR/UNARY_NOT directly — both only need `bool(x)`/
+        `_to_single(x) != 0` truthiness from their operands, which agree
+        for a Python bool or a BASIC -1/0 alike, and NOT's own consumer
+        here only wants a bool back too, so no final UNARY_NEG is needed
+        (contrast with _compile_expr's value-context AND/OR/NOT, which
+        does need one — see there)."""
         t = node.type
         if t in _COMPARE_OPCODE:
             self._compile_expr(node.nodes[0])
             self._compile_expr(node.nodes[1])
             self.chunk.emit(_COMPARE_OPCODE[t])
             return
-        if t in (NodeType.AND, NodeType.OR, NodeType.XOR, NodeType.EQV, NodeType.IMP):
+        if t == NodeType.AND:
+            self._compile_condition(node.nodes[0])
+            self._compile_condition(node.nodes[1])
+            self.chunk.emit(Op.LOGICAL_AND)
+            return
+        if t == NodeType.OR:
+            self._compile_condition(node.nodes[0])
+            self._compile_condition(node.nodes[1])
+            self.chunk.emit(Op.LOGICAL_OR)
+            return
+        if t in (NodeType.XOR, NodeType.EQV, NodeType.IMP):
             self._compile_condition(node.nodes[0])
             self._compile_condition(node.nodes[1])
             self.chunk.emit(Op.CALL_NATIVE, (_BINARY_NATIVE[t], 2))
             return
         if t == NodeType.NOT:
             self._compile_condition(node.nodes[0])
-            self.chunk.emit(Op.CALL_NATIVE, ("_not", 1))
+            self.chunk.emit(Op.UNARY_NOT)
             return
         self._compile_expr(node)
 
@@ -660,8 +701,48 @@ class VMCompiler:
             self.chunk.emit(Op.UNARY_NEG)
             return
         if t == NodeType.NOT:
+            # Operand only needs to be evaluated for its truthiness
+            # (_compile_condition is cheaper); the exact -1/0 conversion
+            # only applies to NOT's own *result*, which — unlike in
+            # _compile_condition — is genuinely observable here (NOT used
+            # as a value, not just a branch test).
+            self._compile_condition(node.nodes[0])
+            self.chunk.emit(Op.UNARY_NOT)
+            self.chunk.emit(Op.UNARY_NEG)
+            return
+        if t == NodeType.INTEGER_DIV:
+            # \ truncates both operands to int *before* dividing, even if
+            # either is a float (visit_integer_div) — TO_INT does the
+            # truncation NucleusVM's raw BINARY_IDIV alone doesn't.
             self._compile_expr(node.nodes[0])
-            self.chunk.emit(Op.CALL_NATIVE, ("_not", 1))
+            self.chunk.emit(Op.TO_INT)
+            self._compile_expr(node.nodes[1])
+            self.chunk.emit(Op.TO_INT)
+            self.chunk.emit(Op.BINARY_IDIV)
+            return
+        if t == NodeType.MOD:
+            # Same truncate-both-first rule as \ (visit_mod).
+            self._compile_expr(node.nodes[0])
+            self.chunk.emit(Op.TO_INT)
+            self._compile_expr(node.nodes[1])
+            self.chunk.emit(Op.TO_INT)
+            self.chunk.emit(Op.BINARY_MOD)
+            return
+        if t == NodeType.AND:
+            # Operands only need their truthiness (_compile_condition);
+            # LOGICAL_AND's bool result then converts to BASIC's -1/0 via
+            # UNARY_NEG, since (unlike _compile_condition's AND) this
+            # value is genuinely observable.
+            self._compile_condition(node.nodes[0])
+            self._compile_condition(node.nodes[1])
+            self.chunk.emit(Op.LOGICAL_AND)
+            self.chunk.emit(Op.UNARY_NEG)
+            return
+        if t == NodeType.OR:
+            self._compile_condition(node.nodes[0])
+            self._compile_condition(node.nodes[1])
+            self.chunk.emit(Op.LOGICAL_OR)
+            self.chunk.emit(Op.UNARY_NEG)
             return
         if t in _BINARY_NATIVE:
             self._compile_expr(node.nodes[0])
