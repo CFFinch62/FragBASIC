@@ -76,6 +76,49 @@ Errors raise `fragbasic_core.LexerError`, `ParseError`, or
 `.line_num` and a pre-formatted `.format()` string. A cancelled run raises
 `ExecutionCancelled`.
 
+## NucleusVM execution engine (experimental)
+
+FragBASIC can also run programs by compiling them to bytecode for
+[NucleusVM](../NucleusVM), a shared VM built to give this and other
+Python-hosted teaching languages a faster execution path than tree-walking,
+instead of interpreting the AST directly. It's opt-in and additive — the
+tree-walking interpreter above remains the default, is untouched by this,
+and is what every other section of this README describes.
+
+```bash
+fragbasic --engine vm examples/fizzbuzz.bas
+```
+
+```python
+from fragbasic_core import run_source
+
+run_source(open("program.bas").read(), engine="vm")  # engine="tree" is the default
+```
+
+**Status**: a first vertical slice, not the full language yet. It covers
+scalars, arithmetic/comparison/logical operators, `IF`/`FOR`/`WHILE`,
+1D–3D arrays, `PRINT`, `DATA`/`READ`/`RESTORE`, `SUB`/`FUNCTION`/`CALL`,
+and the built-ins real usage across all 100 of the sibling `PROJECT_EULER`
+project's Project Euler solutions showed matter (`LEN`, `MID$`, `CHR$`,
+`ASC`, `VAL`, `INT`, `FIX`, `SGN`, `SQR`, `RND`, `LEFT$`, `RIGHT$`, `STR$`,
+`LOG`, `ABS`, `STRING$`). `GOSUB`, `SELECT CASE`, `DO`/`LOOP`, and `INPUT`
+aren't implemented yet (none of those 100 solutions use them either) — an
+unsupported construct raises a clear `NotImplementedError` at compile
+time rather than running incorrectly. `--timeout`/Ctrl+C cancellation
+isn't supported by this engine yet either (only the tree-walker checks
+for it); `euler_benchmark.py`-style external process timeouts still work
+fine, since those don't depend on FragBASIC's own cancellation hook.
+
+**Verified**: every one of the 100 Project Euler solutions that completes
+within a practical time budget under the tree-walker produces
+byte-identical stdout under the VM engine too (0 divergences found across
+repeated full-corpus sweeps). **Measured faster**, not just architecturally
+different: ~3.7x on call-heavy recursive code, ~47% on loop-heavy
+arithmetic/comparison code (the shape most Project Euler solutions
+actually take) — see NucleusVM's `PROGRESS.md` for the full investigation,
+including a real regression this project's own profiling caught and fixed
+in NucleusVM's shared core along the way.
+
 ## Language
 
 FragBASIC is a teaching-focused BASIC dialect: five value types, arrays up

@@ -78,7 +78,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout", type=float, default=None, metavar="SECONDS",
         help="cancel execution after this many seconds of CPU-bound running "
-             "(does not interrupt a program blocked waiting on INPUT)",
+             "(does not interrupt a program blocked waiting on INPUT; "
+             "not yet supported by --engine vm, see below)",
+    )
+    parser.add_argument(
+        "--engine", choices=["tree", "vm"], default="tree",
+        help="execution engine: 'tree' (default) is the original tree-walking "
+             "interpreter; 'vm' compiles to NucleusVM bytecode instead — "
+             "currently a first vertical slice, not the full language (an "
+             "unsupported construct raises a clear error rather than running "
+             "incorrectly), and does not yet support --timeout/Ctrl+C "
+             "cancellation. See the README's 'NucleusVM execution engine' "
+             "section for what's covered and current performance.",
     )
     parser.add_argument("--version", action="version", version=f"fragbasic {__version__}")
     return parser
@@ -107,6 +118,27 @@ def main(argv=None) -> int:
         except OSError as e:
             print(f"fragbasic: could not read {path}: {e}", file=sys.stderr)
             return 2
+
+    if args.engine == "vm":
+        if args.timeout is not None:
+            print("fragbasic: --timeout has no effect under --engine vm (not yet "
+                  "supported) - use an external process timeout instead", file=sys.stderr)
+        try:
+            from . import run_source
+            run_source(source, output_func=_output_func, engine="vm")
+        except FragBasicError as e:
+            print(e.format(), file=sys.stderr)
+            return 1
+        except NotImplementedError as e:
+            print(f"fragbasic: --engine vm doesn't support this program yet: {e}", file=sys.stderr)
+            return 1
+        except KeyboardInterrupt:
+            print("fragbasic: execution cancelled", file=sys.stderr)
+            return 130
+        except Exception as e:
+            print(f"fragbasic: internal error: {e}", file=sys.stderr)
+            return 1
+        return 0
 
     interpreter = Interpreter()
     interpreter.set_io_functions(input_func=_input_func, output_func=_output_func)
