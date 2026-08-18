@@ -80,6 +80,10 @@ def _scan_body(statements, scope):
                 scope.add_local(node.name)
         elif node.type == NodeType.FOR:
             scope.add_local(node.nodes[0].name)  # induction variable
+        elif node.type == NodeType.READ:
+            for target in node.nodes:
+                if not target.nodes:  # scalar target, not an array element
+                    scope.add_local(target.name)
         for child in node.nodes:
             walk(child)
 

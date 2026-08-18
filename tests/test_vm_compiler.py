@@ -293,3 +293,60 @@ def test_unsupported_construct_raises_not_implemented():
 
     with pytest.raises(NotImplementedError):
         run_vm("DO\nPRINT 1\nLOOP UNTIL 1 = 1")
+
+
+def test_fix_sgn_string_builtins():
+    code = """
+    PRINT FIX(3.9)
+    PRINT FIX(-3.9)
+    PRINT SGN(5)
+    PRINT SGN(-5)
+    PRINT SGN(0)
+    PRINT STRING$(5, "x")
+    PRINT STRING$(3, 65)
+    """
+    tree_out, vm_out = run_both(code)
+    assert vm_out == tree_out
+    assert vm_out.splitlines() == ["3", "-3", "1", "-1", "0", "xxxxx", "AAA"]
+
+
+def test_data_read_restore():
+    code = """
+    DATA 10, 20, "hello", 30
+    DIM a AS INTEGER
+    DIM b AS INTEGER
+    READ a, b
+    PRINT a
+    PRINT b
+    READ c$
+    PRINT c$
+    RESTORE
+    READ d
+    PRINT d
+    """
+    tree_out, vm_out = run_both(code)
+    assert vm_out == tree_out
+    assert vm_out.splitlines() == ["10", "20", "hello", "10"]
+
+
+def test_data_read_negative_numbers_and_array_target():
+    code = """
+    DATA -5, 15, -25
+    DIM arr(2)
+    FOR i = 0 TO 2
+        READ arr(i)
+    NEXT i
+    FOR i = 0 TO 2
+        PRINT arr(i)
+    NEXT i
+    """
+    tree_out, vm_out = run_both(code)
+    assert vm_out == tree_out
+    assert vm_out.splitlines() == ["-5", "15", "-25"]
+
+
+def test_read_out_of_data_raises():
+    import pytest
+
+    with pytest.raises(Exception):
+        run_vm("DATA 1\nREAD a\nREAD b")

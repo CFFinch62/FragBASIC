@@ -5,15 +5,18 @@ pass; scalars (global at top level, real resolved locals inside SUB/
 FUNCTION bodies via `symbols.py`); arithmetic/comparison/logical operators;
 IF/IF_ELSE/ELSEIF; FOR/NEXT (with STEP); WHILE/WEND; DIM (scalar and 1D/2D/
 3D array, both legacy and typed forms); PRINT; SUB/FUNCTION/CALL via the
-VM's real CALL/RETURN frame chain; and the 12 builtins the Project Euler
-solution corpus actually uses (see `natives.py` and NucleusVM's
-dev-docs/PLAN.md for the corpus survey behind that list).
+VM's real CALL/RETURN frame chain; DATA/READ/RESTORE (a compile-time-folded
+constant pool plus a runtime cursor — see `_compile_read`); and the 15
+builtins the Project Euler solution corpus actually uses (see `natives.py`
+and NucleusVM's dev-docs/PLAN.md for the corpus survey behind that list).
 
 Deliberately NOT covered this slice (raises NotImplementedError with a
 pointer back to the plan): GOSUB/RETURN/labels (needs new shared NucleusVM
-opcodes — a separate checkpoint), SELECT CASE, DO/LOOP, DATA/READ/RESTORE,
-INPUT, and any builtin outside the 12 above. None of these appear in any of
-the 100 existing FragBASIC Project Euler solutions.
+opcodes — a separate checkpoint), SELECT CASE, DO/LOOP, INPUT, and any
+builtin outside the 15. None of these appear in any of the 100 existing
+FragBASIC Project Euler solutions (confirmed by corpus survey, not
+assumption — DATA/READ, originally in this same deferred list, was added
+after the survey showed 17 solutions actually use it).
 
 Value representation: unboxed native Python int/float/str/dict (arrays),
 no separate type tag — see NucleusVM's PROGRESS.md for the audit that
@@ -91,6 +94,12 @@ _UNSUPPORTED_HINT = (
     "dev-docs/PLAN.md's Phase 1 deferred list in the NucleusVM repo"
 )
 
+# DATA/READ globals: a flat, compile-time-collected constant pool plus a
+# runtime cursor into it. NUL-prefixed like FOR's/array-set's synthetic
+# temps — guaranteed to never collide with a real BASIC identifier.
+_DATA_POOL_NAME = "\0data_pool"
+_DATA_INDEX_NAME = "\0data_index"
+
 
 class VMCompiler:
     def __init__(self):
@@ -103,6 +112,7 @@ class VMCompiler:
         self._synth_counter = 0
         self._scope: FunctionScope | None = None
         self._in_function = False
+        self.data_pool: list = []
 
     # ------------------------------------------------------------------
     # Top level
@@ -111,6 +121,7 @@ class VMCompiler:
     def compile_program(self, ast_root) -> Chunk:
         statements = _flatten_root(ast_root)
         self._collect_definitions(statements)
+        self._emit_data_pool_prelude()
         self._emit_top_level_prelude(statements)
         self._compile_block(statements)
         self.chunk.emit(Op.HALT)
@@ -124,6 +135,12 @@ class VMCompiler:
         return self.chunk
 
     def _collect_definitions(self, statements):
+        # Mirrors interpreter_core.py's collect_definitions exactly,
+        # including its scope: only the top-level flat statement list
+        # (recursing into nested BLOCK, e.g. a multi-declaration DIM) is
+        # scanned — SUB/FUNCTION bodies are never reached this way (they
+        # live in `.body`, not `.nodes`), so DATA inside one is invisible
+        # to READ, same as the tree-walker.
         for node in statements:
             if node.type == NodeType.BLOCK:
                 self._collect_definitions(node.nodes)
@@ -131,6 +148,15 @@ class VMCompiler:
                 self.subs[node.name.upper()] = node
             elif node.type == NodeType.FUNCTION:
                 self.functions[node.name.upper()] = node
+            elif node.type == NodeType.DATA:
+                for value_node in node.nodes:
+                    self.data_pool.append(_fold_data_value(value_node))
+
+    def _emit_data_pool_prelude(self):
+        self.chunk.emit(Op.LOAD_CONST, self.chunk.add_constant(tuple(self.data_pool)))
+        self.chunk.emit(Op.STORE_GLOBAL, _DATA_POOL_NAME)
+        self.chunk.emit(Op.LOAD_CONST, self.chunk.add_constant(0))
+        self.chunk.emit(Op.STORE_GLOBAL, _DATA_INDEX_NAME)
 
     def _emit_top_level_prelude(self, statements):
         for name in sorted(_collect_scalar_names(statements)):
@@ -348,8 +374,58 @@ class VMCompiler:
         if t == NodeType.END:
             self.chunk.emit(Op.HALT)
             return
+        if t == NodeType.DATA:
+            return  # already folded into self.data_pool at compile time
+        if t == NodeType.READ:
+            self._compile_read(node)
+            return
+        if t == NodeType.RESTORE:
+            self._compile_restore(node)
+            return
 
         raise NotImplementedError(f"FragBASIC statement {t.name} {_UNSUPPORTED_HINT}")
+
+    def _compile_read(self, node):
+        for var_node in node.nodes:
+            self.chunk.emit(Op.LOAD_GLOBAL, _DATA_POOL_NAME)
+            self.chunk.emit(Op.LOAD_GLOBAL, _DATA_INDEX_NAME)
+            self.chunk.emit(Op.CALL_NATIVE, ("_read_next", 2))
+
+            name = var_node.name
+            if name.endswith("$"):
+                self.chunk.emit(Op.CALL_NATIVE, ("_tostr", 1))
+            elif name.endswith("%"):
+                self.chunk.emit(Op.CALL_NATIVE, ("_toint", 1))
+            else:
+                # '!', '#', and no-sigil all default to SINGLE (visit_read's
+                # else branch also uses to_single()).
+                self.chunk.emit(Op.CALL_NATIVE, ("_tofloat", 1))
+
+            if var_node.nodes:
+                # Array target — same value-before-indices evaluation
+                # order as _compile_array_set.
+                tmp = self._synthetic_name("read_val")
+                self.chunk.emit(Op.STORE_GLOBAL, tmp)
+                self.chunk.emit(Op.LOAD_GLOBAL, var_node.name)
+                for idx_node in var_node.nodes[:-1]:
+                    self._compile_expr(idx_node)
+                    self.chunk.emit(Op.CALL_NATIVE, ("_toint", 1))
+                    self.chunk.emit(Op.INDEX_GET)
+                self._compile_expr(var_node.nodes[-1])
+                self.chunk.emit(Op.CALL_NATIVE, ("_toint", 1))
+                self.chunk.emit(Op.LOAD_GLOBAL, tmp)
+                self.chunk.emit(Op.INDEX_SET)
+            else:
+                self._emit_store_raw(name)
+
+            self.chunk.emit(Op.LOAD_GLOBAL, _DATA_INDEX_NAME)
+            self.chunk.emit(Op.LOAD_CONST, self.chunk.add_constant(1))
+            self.chunk.emit(Op.BINARY_ADD)
+            self.chunk.emit(Op.STORE_GLOBAL, _DATA_INDEX_NAME)
+
+    def _compile_restore(self, node):
+        self.chunk.emit(Op.LOAD_CONST, self.chunk.add_constant(0))
+        self.chunk.emit(Op.STORE_GLOBAL, _DATA_INDEX_NAME)
 
     def _compile_var_assign(self, node):
         if len(node.nodes) > 1:
@@ -658,6 +734,29 @@ def _dim_scalar_default(var_type):
     if var_type in ("INTEGER", "LONG"):
         return 0
     return 0.0  # SINGLE, DOUBLE, or None (legacy DIM with no AS clause)
+
+
+def _fold_data_value(node):
+    """Compile-time constant-fold one DATA entry. Mirrors
+    collect_definitions' DATA handling, which only ever sees NUMBER/STRING
+    literals in the actual corpus — a bare IDENTIFIER entry (reading a
+    variable's value into DATA) is supported by the parser but nonsensical
+    at collect time in the tree-walker too (variables aren't set yet), so
+    it's not replicated here; negative-number literals (`DATA -5`) parse
+    as a unary MINUS/PLUS around a NUMBER and are constant-folded."""
+    if node.type == NodeType.NUMBER:
+        value = node.value
+        return int(value) if isinstance(value, float) and value.is_integer() else value
+    if node.type == NodeType.STRING:
+        return node.name
+    if node.type == NodeType.MINUS:
+        return -_fold_data_value(node.nodes[0])
+    if node.type == NodeType.PLUS:
+        return _fold_data_value(node.nodes[0])
+    raise NotImplementedError(
+        f"DATA value {node.type.name} {_UNSUPPORTED_HINT} "
+        "(only literal numbers/strings are supported)"
+    )
 
 
 def _collect_scalar_names(statements):

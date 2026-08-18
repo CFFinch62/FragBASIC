@@ -173,6 +173,17 @@ def _logical_imp(a, b):
 
 
 # ---------------------------------------------------------------------
+# DATA/READ (see compiler.py's DATA-pool note): a flat, compile-time-
+# collected list of constants plus a runtime cursor into it.
+# ---------------------------------------------------------------------
+
+def _read_next(pool, index):
+    if index >= len(pool):
+        raise IndexError("Out of DATA")
+    return pool[index]
+
+
+# ---------------------------------------------------------------------
 # FOR loop exit test — step's sign decides which comparison direction
 # applies (execute_for_loop), decided fresh at each check like the
 # tree-walker does, since step is only evaluated once but its sign can't
@@ -245,6 +256,19 @@ def _bi_int(x):
     return int(_to_single(x))
 
 
+def _bi_fix(x):
+    return math.trunc(_to_single(x))
+
+
+def _bi_sgn(x):
+    v = _to_single(x)
+    if v > 0:
+        return 1
+    if v < 0:
+        return -1
+    return 0
+
+
 def _bi_rnd():
     return random.random()
 
@@ -276,6 +300,16 @@ def _bi_chr(x):
     return chr(v) if 0 <= v <= 255 else ""
 
 
+def _bi_string(count, char_arg):
+    count = max(_to_integer(count), 0)
+    if _is_str(char_arg):
+        char = char_arg[0] if char_arg else ""
+    else:
+        v = _to_integer(char_arg)
+        char = chr(v) if 0 <= v <= 255 else ""
+    return char * count
+
+
 def _bi_asc(s):
     sv = _to_string(s)
     return ord(sv[0]) if sv else 0
@@ -297,16 +331,17 @@ def _bi_val(s):
 
 
 BUILTIN_ARITY = {
-    "ABS": 1, "SQR": 1, "LOG": 1, "INT": 1, "RND": 0,
+    "ABS": 1, "SQR": 1, "LOG": 1, "INT": 1, "FIX": 1, "SGN": 1, "RND": 0,
     "LEN": 1, "LEFT$": 2, "RIGHT$": 2, "MID$": None,
-    "CHR$": 1, "ASC": 1, "STR$": 1, "VAL": 1,
+    "CHR$": 1, "ASC": 1, "STR$": 1, "VAL": 1, "STRING$": 2,
 }
 
 _BUILTIN_FUNCS = {
     "ABS": _bi_abs, "SQR": _bi_sqr, "LOG": _bi_log, "INT": _bi_int,
+    "FIX": _bi_fix, "SGN": _bi_sgn,
     "RND": _bi_rnd, "LEN": _bi_len, "LEFT$": _bi_left, "RIGHT$": _bi_right,
     "MID$": _bi_mid, "CHR$": _bi_chr, "ASC": _bi_asc, "STR$": _bi_str,
-    "VAL": _bi_val,
+    "VAL": _bi_val, "STRING$": _bi_string,
 }
 
 
@@ -342,6 +377,7 @@ def build_natives(output_func):
         "_and": _logical_and, "_or": _logical_or, "_not": _logical_not,
         "_xor": _logical_xor, "_eqv": _logical_eqv, "_imp": _logical_imp,
         "_for_should_exit": _for_should_exit,
+        "_read_next": _read_next,
         "_toint": _to_integer, "_tofloat": _to_single, "_tostr": _to_string,
         "_alloc_array1": _alloc_array1, "_alloc_array2": _alloc_array2,
         "_alloc_array3": _alloc_array3,
