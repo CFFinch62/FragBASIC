@@ -89,6 +89,26 @@ _BINARY_OPCODE = {
     NodeType.DIVIDE: Op.BINARY_DIV,
 }
 
+# Condition-context comparison codegen (see _compile_condition): raw
+# COMPARE_* opcodes produce a Python bool instead of _BINARY_NATIVE's
+# CALL_NATIVE-materialized -1/0 INTEGER. Safe *only* where the result's
+# exact representation never escapes as a real value (a branch test, or an
+# AND/OR/NOT operand — both only ever check truthiness via `!= 0`/`bool()`,
+# which agree for any Python bool or BASIC -1/0 alike). Known, accepted gap
+# (same class as the DIVIDE-with-string-operand one already noted): unlike
+# the native comparison helpers, raw Python `<`/`>`/etc. cannot compare a
+# string against a number (TypeError, loud, not silently wrong) — the
+# native path's string-coercion behavior only matters when comparing a
+# string to a non-string, not exercised by the (numeric) Euler corpus.
+_COMPARE_OPCODE = {
+    NodeType.EE: Op.COMPARE_EQ,
+    NodeType.NE: Op.COMPARE_NE,
+    NodeType.LT: Op.COMPARE_LT,
+    NodeType.GT: Op.COMPARE_GT,
+    NodeType.LTE: Op.COMPARE_LE,
+    NodeType.GTE: Op.COMPARE_GE,
+}
+
 _UNSUPPORTED_HINT = (
     "is not yet supported by the NucleusVM compiler slice — see "
     "dev-docs/PLAN.md's Phase 1 deferred list in the NucleusVM repo"
@@ -296,11 +316,24 @@ class VMCompiler:
             self.chunk.emit(Op.LOAD_CONST, self.chunk.add_constant(1.0))
         self.chunk.emit(Op.STORE_GLOBAL, step_tmp)
 
+        # Step's sign decides which direction the exit test compares
+        # (execute_for_loop). Most loops have no STEP (implicit +1) or a
+        # literal STEP, so the sign is knowable here at compile time,
+        # letting the per-iteration test be a raw COMPARE_*+JUMP_IF_TRUE
+        # instead of a CALL_NATIVE on every single iteration — a dynamic/
+        # computed STEP still falls back to the general runtime check.
+        step_sign = _static_step_sign(step_expr)
+
         loop_start = self.chunk.here()
         self._emit_load_raw(var_name)
         self.chunk.emit(Op.LOAD_GLOBAL, end_tmp)
-        self.chunk.emit(Op.LOAD_GLOBAL, step_tmp)
-        self.chunk.emit(Op.CALL_NATIVE, ("_for_should_exit", 3))
+        if step_sign == 1:
+            self.chunk.emit(Op.COMPARE_GT)
+        elif step_sign == -1:
+            self.chunk.emit(Op.COMPARE_LT)
+        else:
+            self.chunk.emit(Op.LOAD_GLOBAL, step_tmp)
+            self.chunk.emit(Op.CALL_NATIVE, ("_for_should_exit", 3))
         exit_jump = self.chunk.emit(Op.JUMP_IF_TRUE, None)
 
         body = statements[i + 1 : next_index]
@@ -321,7 +354,7 @@ class VMCompiler:
         condition_expr = while_node.nodes[0]
 
         loop_start = self.chunk.here()
-        self._compile_expr(condition_expr)
+        self._compile_condition(condition_expr)
         exit_jump = self.chunk.emit(Op.JUMP_IF_FALSE, None)
 
         body = statements[i + 1 : wend_index]
@@ -512,9 +545,35 @@ class VMCompiler:
         self.chunk.emit(Op.CALL_NATIVE, ("_print", len(node.nodes) + 1))
         self.chunk.emit(Op.POP_TOP)
 
+    def _compile_condition(self, node):
+        """Compile an expression used only for its truthiness — an
+        IF/WHILE condition, or an AND/OR/NOT/XOR/EQV/IMP operand (those
+        natives all test `_to_single(x) != 0`, which agrees for a Python
+        bool or a BASIC -1/0 alike). Behaves exactly like _compile_expr
+        except it skips materializing an exact -1/0 for a comparison
+        result that will never be observed as a real value — see
+        _COMPARE_OPCODE's note for why this is safe here specifically
+        and not in general expression context."""
+        t = node.type
+        if t in _COMPARE_OPCODE:
+            self._compile_expr(node.nodes[0])
+            self._compile_expr(node.nodes[1])
+            self.chunk.emit(_COMPARE_OPCODE[t])
+            return
+        if t in (NodeType.AND, NodeType.OR, NodeType.XOR, NodeType.EQV, NodeType.IMP):
+            self._compile_condition(node.nodes[0])
+            self._compile_condition(node.nodes[1])
+            self.chunk.emit(Op.CALL_NATIVE, (_BINARY_NATIVE[t], 2))
+            return
+        if t == NodeType.NOT:
+            self._compile_condition(node.nodes[0])
+            self.chunk.emit(Op.CALL_NATIVE, ("_not", 1))
+            return
+        self._compile_expr(node)
+
     def _compile_if(self, node):
         cond, then_block = node.nodes[0], node.nodes[1]
-        self._compile_expr(cond)
+        self._compile_condition(cond)
         skip_jump = self.chunk.emit(Op.JUMP_IF_FALSE, None)
         self._compile_block(_as_list(then_block))
         self.chunk.patch_arg(skip_jump, self.chunk.here())
@@ -523,7 +582,7 @@ class VMCompiler:
         cond, then_block = node.nodes[0], node.nodes[1]
         rest = node.nodes[2:]
 
-        self._compile_expr(cond)
+        self._compile_condition(cond)
         next_jump = self.chunk.emit(Op.JUMP_IF_FALSE, None)
         self._compile_block(_as_list(then_block))
         end_jumps = [self.chunk.emit(Op.JUMP, None)]
@@ -532,7 +591,7 @@ class VMCompiler:
         for clause in rest:
             if clause.type == NodeType.ELSEIF:
                 elseif_cond, elseif_block = clause.nodes[0], clause.nodes[1]
-                self._compile_expr(elseif_cond)
+                self._compile_condition(elseif_cond)
                 nj = self.chunk.emit(Op.JUMP_IF_FALSE, None)
                 self._compile_block(_as_list(elseif_block))
                 end_jumps.append(self.chunk.emit(Op.JUMP, None))
@@ -717,6 +776,25 @@ def _as_list(node):
     if node.type == NodeType.NULL:
         return []
     return [node]
+
+
+def _static_step_sign(step_expr):
+    """+1/-1 if a FOR loop's STEP sign is knowable at compile time (no
+    STEP at all defaults to +1; a literal number or a negated literal has
+    an obvious sign), else None (a computed/variable STEP — sign must be
+    checked at runtime, see _compile_for). STEP 0 is degenerate either
+    way; leave it to the general runtime path rather than special-casing
+    it here."""
+    if step_expr is None:
+        return 1
+    if step_expr.type == NodeType.NUMBER:
+        return None if step_expr.value == 0 else (1 if step_expr.value > 0 else -1)
+    if step_expr.type == NodeType.MINUS and step_expr.nodes[0].type == NodeType.NUMBER:
+        v = step_expr.nodes[0].value
+        return None if v == 0 else (-1 if v > 0 else 1)
+    if step_expr.type == NodeType.PLUS:
+        return _static_step_sign(step_expr.nodes[0])
+    return None
 
 
 def _sigil_default(name):
