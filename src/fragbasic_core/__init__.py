@@ -52,7 +52,8 @@ __all__ = [
 ]
 
 
-def run_source(source: str, input_func=None, output_func=None, interpreter: Interpreter = None) -> Interpreter:
+def run_source(source: str, input_func=None, output_func=None, interpreter: Interpreter = None,
+               engine: str = "tree"):
     """
     Lex, parse, and execute a FragBASIC program in one call.
 
@@ -65,12 +66,17 @@ def run_source(source: str, input_func=None, output_func=None, interpreter: Inte
     and ExecutionCancelled if the interpreter's request_cancel() was
     called from another thread/signal handler while running.
 
-    Returns the Interpreter instance used, so callers can inspect
-    variables/arrays afterward (mainly useful for tests and embedding).
-    """
-    if interpreter is None:
-        interpreter = Interpreter()
+    `engine` selects the execution backend: `"tree"` (default) is the
+    original tree-walking interpreter; `"vm"` compiles to NucleusVM
+    bytecode instead (see `vm_compiler/` — currently a first vertical
+    slice, not the full language; unsupported constructs raise
+    NotImplementedError at compile time). Nothing about the default
+    behavior changes when this parameter is left unset.
 
+    Returns the Interpreter instance used when `engine="tree"` (so callers
+    can inspect variables/arrays afterward, mainly useful for tests and
+    embedding), or the NucleusVM `VM` instance when `engine="vm"`.
+    """
     if output_func is None:
         def output_func(text):
             sys.stdout.write(text)
@@ -83,10 +89,21 @@ def run_source(source: str, input_func=None, output_func=None, interpreter: Inte
                 raise EOFError
             return line.rstrip("\n")
 
-    interpreter.set_io_functions(input_func=input_func, output_func=output_func)
-
     tokens = Lexer(source).generate_tokens()
     ast = Parser(tokens).parse()
-    interpreter.interpret(ast)
 
+    if engine == "vm":
+        from nucleus_vm import VM
+        from .vm_compiler import compile_program
+        from .vm_compiler.natives import build_natives
+
+        chunk = compile_program(ast)
+        vm = VM(natives=build_natives(output_func))
+        vm.run(chunk)
+        return vm
+
+    if interpreter is None:
+        interpreter = Interpreter()
+    interpreter.set_io_functions(input_func=input_func, output_func=output_func)
+    interpreter.interpret(ast)
     return interpreter
