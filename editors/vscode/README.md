@@ -6,17 +6,16 @@ Syntax highlighting, editor behaviours, snippets and one-key running for
 ## Getting FragBASIC
 
 This extension highlights and runs `.bas` files — it does not bundle the
-interpreter.
+interpreter. Get it from GitHub:
 
-> **Note:** FragBASIC is not published on GitHub yet, so
-> <https://github.com/CFFinch62/FragBASIC> is not live. The manifest already
-> points there for when it is; until then, build from your local checkout.
+**<https://github.com/CFFinch62/FragBASIC>**
 
 FragBASIC is free and open source under the **MIT License**, as is this
 extension.
 
 ```sh
-cd FragBASIC          # your local checkout
+git clone https://github.com/CFFinch62/FragBASIC.git
+cd FragBASIC
 pip install -e .
 ```
 

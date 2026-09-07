@@ -17,6 +17,13 @@ writing FragBASIC programs.
 ## Getting started
 
 ```bash
+git clone https://github.com/CFFinch62/FragBASIC.git
+cd FragBASIC
+```
+
+Then:
+
+```bash
 ./setup.sh                                # creates venv, installs dev extras
 source venv/bin/activate
 python -m pytest tests/ -v                # run the interpreter test suite
