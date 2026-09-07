@@ -37,6 +37,7 @@ fragbasic examples/fizzbuzz.bas
 fragbasic <file.bas>
 fragbasic -c "<code>"
 fragbasic <file.bas> --timeout <seconds>
+fragbasic --check <file.bas>
 ```
 
 - Program output goes to stdout, flushed after every write (so it streams
@@ -51,6 +52,19 @@ fragbasic <file.bas> --timeout <seconds>
 - `--timeout` cancels a CPU-bound program between statements. It cannot
   interrupt a program that's blocked waiting on `INPUT` — use Ctrl+C or
   SIGTERM for that instead.
+- `--check` lexes and parses without running: nothing is printed, `INPUT`
+  never blocks, and it returns immediately. Errors are reported as
+  `<path>:<line>: <message>` — prefixed with the file, unlike the bare
+  `Error on line N:` a run produces — so an editor or build tool can
+  attribute them. Exit `0` if the program parses, `1` if it does not.
+
+## Editor support
+
+[editors/vscode](editors/vscode) is a VS Code extension for `.bas` files:
+case-insensitive highlighting for all 61 reserved words and 35 builtins, Run
+and Check commands, Run Selection via `-c`, and the Problems panel. It handles
+the details a generic BASIC grammar misses — an apostrophe is a comment only at
+the start of a line, and a QB64 single-quoted string anywhere else.
 
 ## Embedding
 

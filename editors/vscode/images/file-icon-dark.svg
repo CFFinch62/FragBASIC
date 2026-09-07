@@ -1,0 +1,11 @@
+<!-- FragBASIC file icon, dark themes. Three shards, carrying the shattered-
+     fragment motif of packaging/icons/fragbasic_icon.svg down to the 16px the
+     explorer actually renders — the full icon's five-piece break plus its
+     terminal prompt turns to mush at this size. The gaps between shards are
+     the whole point, so they are kept wide enough to survive antialiasing.
+     Drawn as geometry so it needs no font. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <polygon points="8,1.4 13.6,5.2 10.3,7.6 6.1,6.1" fill="#ffb454"/>
+  <polygon points="13.6,5.2 14.6,11.6 11.2,10.9 10.3,7.6" fill="#f0883a"/>
+  <polygon points="6.1,6.1 10.3,7.6 11.2,10.9 4.6,13.4 1.6,8.6" fill="#ffc97a"/>
+</svg>

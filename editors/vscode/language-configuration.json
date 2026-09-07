@@ -1,0 +1,37 @@
+{
+  "comments": {
+    "lineComment": "'"
+  },
+  "brackets": [["(", ")"]],
+  "autoClosingPairs": [
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] }
+  ],
+  "surroundingPairs": [
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "autoCloseBefore": "),;:\t\n ",
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*[$%&!#]?",
+  "_comment": "FragBASIC blocks are delimited by keywords (END IF, NEXT, WEND, LOOP, END SUB), not by indentation, so indentation here is a convention the editor maintains rather than syntax. Folding is therefore marker-based, not offside.",
+  "indentationRules": {
+    "increaseIndentPattern": "(?i)^\\s*(IF\\b.*\\bTHEN\\s*$|ELSE\\s*$|ELSEIF\\b.*\\bTHEN\\s*$|FOR\\b|WHILE\\b|DO\\b|SUB\\b|FUNCTION\\b|SELECT\\s+CASE\\b|CASE\\b|TYPE\\s+[A-Za-z_])",
+    "decreaseIndentPattern": "(?i)^\\s*(END\\s*(IF|SUB|FUNCTION|SELECT|TYPE)?\\b|ELSE\\b|ELSEIF\\b|NEXT\\b|WEND\\b|LOOP\\b|CASE\\b)"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "(?i)^\\s*(IF\\b.*\\bTHEN\\s*$|ELSE\\s*$|ELSEIF\\b.*\\bTHEN\\s*$|FOR\\b|WHILE\\b|DO\\b|SUB\\b|FUNCTION\\b|SELECT\\s+CASE\\b|CASE\\b)",
+      "action": { "indent": "indent" }
+    },
+    {
+      "beforeText": "^\\s*'",
+      "action": { "indent": "none", "appendText": "' " }
+    }
+  ],
+  "folding": {
+    "markers": {
+      "start": "(?i)^\\s*(IF\\b.*\\bTHEN\\s*$|FOR\\b|WHILE\\b|DO\\b|SUB\\b|FUNCTION\\b|SELECT\\s+CASE\\b|TYPE\\s+[A-Za-z_])",
+      "end": "(?i)^\\s*(END\\s*(IF|SUB|FUNCTION|SELECT|TYPE)\\b|NEXT\\b|WEND\\b|LOOP\\b)"
+    }
+  }
+}

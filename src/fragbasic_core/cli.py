@@ -91,6 +91,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "cancellation. See the README's 'NucleusVM execution engine' "
              "section for what's covered and current performance.",
     )
+    parser.add_argument(
+        "--check", action="store_true",
+        help="report syntax errors without running the program — lexes and parses "
+             "only, so nothing is printed and INPUT never blocks. Errors are "
+             "prefixed with the file path so an editor can attribute them.",
+    )
     parser.add_argument("--version", action="version", version=f"fragbasic {__version__}")
     return parser
 
@@ -118,6 +124,26 @@ def main(argv=None) -> int:
         except OSError as e:
             print(f"fragbasic: could not read {path}: {e}", file=sys.stderr)
             return 2
+
+    if args.check:
+        # Parse-only. An editor needs to ask "does this parse?" without the
+        # program running: a FragBASIC program PRINTs, and more importantly
+        # INPUT blocks on stdin forever when nothing is there to type into it,
+        # which would hang whatever launched the check.
+        where = args.file if args.file is not None else "-c"
+        try:
+            Parser(Lexer(source).generate_tokens()).parse()
+        except FragBasicError as e:
+            if e.line_num is not None:
+                print(f"{where}:{e.line_num}: {e.message}", file=sys.stderr)
+            else:
+                print(f"{where}: {e.message}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"fragbasic: internal error: {e}", file=sys.stderr)
+            return 1
+        print(f"{where}: no syntax errors")
+        return 0
 
     if args.engine == "vm":
         if args.timeout is not None:

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FragBASIC",
+  "scopeName": "source.fragbasic",
+  "fileTypes": ["bas"],
+  "_comment": "Word lists are the 61 reserved words in Lexer.KEYWORDS (src/fragbasic_core/lexer.py) plus the 35 builtin functions the interpreter dispatches, split by role so every reserved word lands in exactly one category. All matching is case-insensitive: the lexer compares word.upper() against KEYWORDS, so `print`, `Print` and `PRINT` are the same token.",
+  "patterns": [
+    { "include": "#comment_apostrophe" },
+    { "include": "#string_double" },
+    { "include": "#comment_rem" },
+    { "include": "#string_single" },
+    { "include": "#line_number" },
+    { "include": "#keyword_statement" },
+    { "include": "#keyword_declaration" },
+    { "include": "#keyword_operator_word" },
+    { "include": "#support_builtin" },
+    { "include": "#constant_numeric" },
+    { "include": "#variable_typed" },
+    { "include": "#function_call" },
+    { "include": "#operator" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment_apostrophe": {
+      "comment": "An apostrophe opens a comment ONLY at the start of a line (ignoring indentation) -- Lexer.is_at_start_of_line(). Anywhere else it opens a QB64 single-quoted string, handled by #string_single. Matched from column 0 so it beats a later double quote on the same line.",
+      "match": "^(\\s*)('.*)$",
+      "captures": {
+        "2": { "name": "comment.line.apostrophe.fragbasic" }
+      }
+    },
+
+    "comment_rem": {
+      "comment": "REM consumes the rest of the line wherever it appears.",
+      "name": "comment.line.rem.fragbasic",
+      "match": "(?i)\\bREM\\b.*$"
+    },
+
+    "string_double": {
+      "comment": "No escape sequences -- the lexer runs from one quote to the next, so a double-quoted string cannot contain a double quote. Ended at end-of-line too, so an unterminated string does not colour the rest of the file.",
+      "name": "string.quoted.double.fragbasic",
+      "begin": "\"",
+      "end": "\"|$",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.fragbasic" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.fragbasic" }
+      }
+    },
+
+    "string_single": {
+      "comment": "QB64 single-quoted string -- only reachable mid-line, since a leading apostrophe was already taken as a comment.",
+      "name": "string.quoted.single.fragbasic",
+      "begin": "'",
+      "end": "'|$",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.fragbasic" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.fragbasic" }
+      }
+    },
+
+    "line_number": {
+      "comment": "A classic BASIC line number: digits at the very start of a line.",
+      "name": "constant.numeric.line-number.fragbasic",
+      "match": "^\\s*[0-9]+(?=\\s)"
+    },
+
+    "keyword_statement": {
+      "name": "keyword.control.fragbasic",
+      "match": "(?i)\\b(PRINT|INPUT|LET|DIM|DATA|READ|RESTORE|IF|THEN|ELSEIF|ELSE|END|FOR|TO|STEP|NEXT|WHILE|WEND|DO|LOOP|UNTIL|GOSUB|RETURN|SUB|FUNCTION|EXIT|CALL|SELECT|CASE|RANDOMIZE|SLEEP)\\b"
+    },
+
+    "keyword_declaration": {
+      "comment": "Type names and declaration modifiers. STRING is here rather than with the builtins; STRING$ (the padding function) is a separate word and lives in #support_builtin.",
+      "name": "storage.type.fragbasic",
+      "match": "(?i)\\b(AS|INTEGER|LONG|SINGLE|DOUBLE|STRING|CONST|TYPE|OPTION|BASE|DEFINT|DEFLNG|DEFSNG|DEFDBL|DEFSTR|SHARED|STATIC)\\b"
+    },
+
+    "keyword_operator_word": {
+      "name": "keyword.operator.word.fragbasic",
+      "match": "(?i)\\b(AND|OR|NOT|XOR|EQV|IMP|MOD)\\b"
+    },
+
+    "support_builtin": {
+      "comment": "The 35 functions the interpreter dispatches by name. The $-suffixed ones are listed before any bare prefix could win, and the whole rule sits before #variable_typed so LEFT$ is a builtin rather than a string variable named LEFT.",
+      "name": "support.function.builtin.fragbasic",
+      "match": "(?i)\\b(ABS|ASC|ATN|CDBL|CHR\\$|CINT|CLNG|COS|CSNG|DATE\\$|EXP|FIX|INKEY\\$|INSTR|INT|LCASE\\$|LEFT\\$|LEN|LOG|LTRIM\\$|MID\\$|RIGHT\\$|RND|RTRIM\\$|SGN|SIN|SPACE\\$|SQR|STR\\$|STRING\\$|TAN|TIME\\$|TIMER|UCASE\\$|VAL)(?![A-Za-z0-9_])"
+    },
+
+    "constant_numeric": {
+      "comment": "A number, optionally with a QBasic type suffix (% integer, & long, ! single, # double).",
+      "name": "constant.numeric.fragbasic",
+      "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?[%&!#]?\\b"
+    },
+
+    "variable_typed": {
+      "comment": "An identifier carrying a QBasic type sigil -- name$ is a string, name% an integer, and so on. Plain identifiers are left unscoped, as they are in every other language here.",
+      "name": "variable.other.fragbasic",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*[\\$%&!#]"
+    },
+
+    "function_call": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*[\\$%&!#]?)\\s*(?=\\()",
+      "name": "entity.name.function.fragbasic"
+    },
+
+    "operator": {
+      "patterns": [
+        {
+          "comment": "<> before < and >; <= and >= before the bare forms.",
+          "name": "keyword.operator.comparison.fragbasic",
+          "match": "<>|<=|>=|[<>]"
+        },
+        {
+          "name": "keyword.operator.arithmetic.fragbasic",
+          "match": "[+\\-*/\\\\^]"
+        },
+        {
+          "comment": "`=` is both assignment and equality in BASIC.",
+          "name": "keyword.operator.assignment.fragbasic",
+          "match": "="
+        }
+      ]
+    },
+
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.definition.parameters.fragbasic", "match": "[()]" },
+        { "name": "punctuation.separator.comma.fragbasic", "match": "," },
+        {
+          "comment": "`;` separates PRINT items; `:` separates statements on one line.",
+          "name": "punctuation.separator.fragbasic",
+          "match": "[;:]"
+        }
+      ]
+    }
+  }
+}

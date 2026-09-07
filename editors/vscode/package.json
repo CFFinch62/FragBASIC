@@ -1,0 +1,194 @@
+{
+  "name": "fragbasic-language",
+  "displayName": "FragBASIC Language",
+  "description": "Syntax highlighting, snippets, and one-key running for the FragBASIC programming language (.bas files).",
+  "version": "0.1.0",
+  "publisher": "fragillidae",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CFFinch62/FragBASIC.git"
+  },
+  "homepage": "https://github.com/CFFinch62/FragBASIC#readme",
+  "bugs": {
+    "url": "https://github.com/CFFinch62/FragBASIC/issues"
+  },
+  "qna": "https://github.com/CFFinch62/FragBASIC/issues",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "fragbasic",
+    "basic",
+    "bas",
+    "qbasic",
+    "qb64"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:fragbasic"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "fragbasic",
+        "aliases": [
+          "FragBASIC",
+          "fragbasic"
+        ],
+        "extensions": [
+          ".bas"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/file-icon-light.svg",
+          "dark": "./images/file-icon-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fragbasic",
+        "scopeName": "source.fragbasic",
+        "path": "./syntaxes/fragbasic.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "fragbasic",
+        "path": "./snippets/fragbasic.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "fragbasic.runFile",
+        "title": "FragBASIC: Run File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "fragbasic.checkFile",
+        "title": "FragBASIC: Check for Errors",
+        "icon": "$(check)"
+      },
+      {
+        "command": "fragbasic.runSelection",
+        "title": "FragBASIC: Run Selection",
+        "icon": "$(run-below)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "fragbasic.runFile",
+          "when": "resourceLangId == fragbasic",
+          "group": "navigation@1"
+        },
+        {
+          "command": "fragbasic.checkFile",
+          "when": "resourceLangId == fragbasic",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "fragbasic.runFile",
+          "when": "resourceLangId == fragbasic",
+          "group": "z_commands@1"
+        },
+        {
+          "command": "fragbasic.runSelection",
+          "when": "resourceLangId == fragbasic && editorHasSelection",
+          "group": "z_commands@2"
+        }
+      ],
+      "commandPalette": [
+        { "command": "fragbasic.runFile", "when": "resourceLangId == fragbasic" },
+        { "command": "fragbasic.checkFile", "when": "resourceLangId == fragbasic" },
+        { "command": "fragbasic.runSelection", "when": "resourceLangId == fragbasic" }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "fragbasic.runFile",
+        "key": "ctrl+f5",
+        "mac": "cmd+f5",
+        "when": "resourceLangId == fragbasic && editorTextFocus"
+      },
+      {
+        "command": "fragbasic.checkFile",
+        "key": "ctrl+shift+f5",
+        "mac": "cmd+shift+f5",
+        "when": "resourceLangId == fragbasic && editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "FragBASIC",
+      "properties": {
+        "fragbasic.interpreterPath": {
+          "type": "string",
+          "default": "fragbasic",
+          "markdownDescription": "Path to the `fragbasic` command. Leave as `fragbasic` if `pip install -e .` put it on your `PATH`; otherwise give an absolute path (for example the `fragbasic` inside a virtualenv's `bin/`)."
+        },
+        "fragbasic.saveBeforeRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Save the file automatically before running or checking it."
+        },
+        "fragbasic.runInTerminal": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Run in an integrated terminal, which keeps `INPUT` usable.\n\nTurn this **off** to capture output in an Output channel instead, which is what populates the Problems panel. **FragBASIC: Check for Errors** always uses the Output channel, so you can leave this on and still get diagnostics on demand."
+        },
+        "fragbasic.checkOnSave": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Run `fragbasic --check` whenever a `.bas` file is saved and report syntax errors in the Problems panel. Off by default because it spawns the interpreter on every save."
+        },
+        "fragbasic.timeout": {
+          "type": ["number", "null"],
+          "default": null,
+          "markdownDescription": "Seconds of CPU-bound running after which a program is cancelled, passed as `--timeout`. Leave empty for no limit. Does not interrupt a program blocked on `INPUT`, and has no effect under the `vm` engine."
+        },
+        "fragbasic.engine": {
+          "type": "string",
+          "enum": ["tree", "vm"],
+          "default": "tree",
+          "markdownDescription": "Execution engine passed as `--engine`. `tree` is the tree-walking interpreter; `vm` compiles to NucleusVM bytecode and currently covers only part of the language — an unsupported construct raises a clear error rather than running incorrectly."
+        }
+      }
+    },
+    "problemMatchers": [
+      {
+        "name": "fragbasic",
+        "owner": "fragbasic",
+        "source": "fragbasic",
+        "fileLocation": "autoDetect",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "fragbasic",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The .bas file to run."
+          }
+        }
+      }
+    ]
+  }
+}

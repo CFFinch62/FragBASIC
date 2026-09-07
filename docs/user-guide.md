@@ -17,6 +17,7 @@ and [§2](#2-a-first-program), then use [§10](#10-keyword-reference) and
 fragbasic script.bas              # run a file
 fragbasic -c 'PRINT "hi"'         # run a snippet directly
 fragbasic script.bas --timeout 10 # cancel after 10 seconds of running
+fragbasic --check script.bas      # report syntax errors without running it
 fragbasic --version
 ```
 
@@ -28,6 +29,21 @@ fragbasic --version
   runtime error in the program, `2` a usage error (bad arguments, file not
   found), `130` execution was cancelled (Ctrl+C, SIGTERM, or `--timeout`
   expired).
+- `--check` answers "does this parse?" without side effects. It lexes and
+  parses only, so nothing is printed and `INPUT` never blocks — which is what
+  makes it usable from an editor, where a program waiting on stdin that nobody
+  is typing into would hang forever. Its errors carry the file path
+  (`script.bas:4: unexpected token`), unlike a run's `Error on line 4:`, so a
+  tool can place them.
+
+  ```console
+  $ fragbasic --check examples/fizzbuzz.bas
+  examples/fizzbuzz.bas: no syntax errors
+
+  $ fragbasic --check broken.bas
+  broken.bas:2: Unexpected token in expression
+  ```
+
 - `--timeout` only interrupts a *running* program between statements — it
   cannot interrupt a program that's blocked waiting on `INPUT`. Use
   Ctrl+C (or send SIGTERM) for that.

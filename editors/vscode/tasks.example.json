@@ -1,0 +1,41 @@
+// Copy into your project's .vscode/tasks.json to drive FragBASIC as build
+// tasks. This needs no extension at all -- the problem matcher below turns
+// `fragbasic --check` output into entries in the Problems panel on its own.
+//
+// Note the split: --check names the file it is reporting on, so a matcher can
+// place its errors. A failing run prints "Error on line <n>: <message>" with
+// no filename, which a task matcher has no way to attribute -- so the run task
+// carries no matcher, and --check is the task to bind to a key for squiggles.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FragBASIC: check current file",
+      "type": "shell",
+      "command": "fragbasic",
+      "args": ["--check", "${file}"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "silent", "panel": "dedicated", "clear": true },
+      "problemMatcher": {
+        "owner": "fragbasic",
+        "source": "fragbasic",
+        "fileLocation": "autoDetect",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      }
+    },
+    {
+      "label": "FragBASIC: run current file",
+      "type": "shell",
+      "command": "fragbasic",
+      "args": ["${file}"],
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    }
+  ]
+}
