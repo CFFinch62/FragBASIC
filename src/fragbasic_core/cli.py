@@ -152,6 +152,18 @@ def main(argv=None) -> int:
         try:
             from . import run_source
             run_source(source, output_func=_output_func, engine="vm")
+        except ImportError:
+            # NucleusVM is an optional extra, not a requirement: fragbasic_core
+            # itself uses only the standard library, and the default engine
+            # needs none of this. Say so plainly rather than surfacing a raw
+            # ImportError traceback.
+            print(
+                "fragbasic: --engine vm needs NucleusVM, which is not installed.\n"
+                "           Install it with:  pip install -e '.[vm]'\n"
+                "           (or drop --engine vm to use the default engine)",
+                file=sys.stderr,
+            )
+            return 1
         except FragBasicError as e:
             print(e.format(), file=sys.stderr)
             return 1

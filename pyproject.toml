@@ -29,13 +29,21 @@ classifiers = [
     "Topic :: Education",
     "Topic :: Software Development :: Interpreters",
 ]
-dependencies = [
-    "nucleus-vm @ file:///home/chuck/Dropbox/Programming/Languages_and_Code/Programming_Projects/Programming_Tools/LANGUAGES/NucleusVM",
-]
+# Intentionally empty: fragbasic_core uses only the Python standard library,
+# which is what makes it safe to embed anywhere. The experimental `--engine vm`
+# path needs NucleusVM -- see the `vm` extra below.
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+]
+# The experimental `--engine vm` path only. NucleusVM is not on PyPI and is not
+# required to run FragBASIC: the tree-walking interpreter is the default and
+# needs none of this. Install from a local checkout of the sibling repo:
+#     pip install -e ../NucleusVM
+vm = [
+    "nucleus-vm",
 ]
 
 [project.scripts]

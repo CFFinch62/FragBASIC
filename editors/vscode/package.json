@@ -107,9 +107,18 @@
         }
       ],
       "commandPalette": [
-        { "command": "fragbasic.runFile", "when": "resourceLangId == fragbasic" },
-        { "command": "fragbasic.checkFile", "when": "resourceLangId == fragbasic" },
-        { "command": "fragbasic.runSelection", "when": "resourceLangId == fragbasic" }
+        {
+          "command": "fragbasic.runFile",
+          "when": "resourceLangId == fragbasic"
+        },
+        {
+          "command": "fragbasic.checkFile",
+          "when": "resourceLangId == fragbasic"
+        },
+        {
+          "command": "fragbasic.runSelection",
+          "when": "resourceLangId == fragbasic"
+        }
       ]
     },
     "keybindings": [
@@ -150,15 +159,21 @@
           "markdownDescription": "Run `fragbasic --check` whenever a `.bas` file is saved and report syntax errors in the Problems panel. Off by default because it spawns the interpreter on every save."
         },
         "fragbasic.timeout": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "default": null,
           "markdownDescription": "Seconds of CPU-bound running after which a program is cancelled, passed as `--timeout`. Leave empty for no limit. Does not interrupt a program blocked on `INPUT`, and has no effect under the `vm` engine."
         },
         "fragbasic.engine": {
           "type": "string",
-          "enum": ["tree", "vm"],
+          "enum": [
+            "tree",
+            "vm"
+          ],
           "default": "tree",
-          "markdownDescription": "Execution engine passed as `--engine`. `tree` is the tree-walking interpreter; `vm` compiles to NucleusVM bytecode and currently covers only part of the language — an unsupported construct raises a clear error rather than running incorrectly."
+          "markdownDescription": "Execution engine passed as `--engine`.\n\n`tree` is the default and needs nothing extra. `vm` compiles to NucleusVM bytecode — an experiment that did not deliver the speed-up it was built for, so it is parked and **not installed by default**. It also covers only part of the language. Selecting it without NucleusVM present makes every run report the missing dependency and fail; install it with `pip install -e ../NucleusVM` first."
         }
       }
     },
